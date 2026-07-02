@@ -9,36 +9,61 @@
 </head>
 <body>
   <header>
-    <h1>pricewatch</h1>
+    <div class="brand">
+      <div class="brand-mark">₹</div>
+      <h1>pricewatch <small>Amazon.in deal &amp; price tracker</small></h1>
+      <button id="help-btn" title="How it works">?</button>
+    </div>
     <nav id="tabs">
-      <button class="tab active" data-tab="deals">Deals</button>
-      <button class="tab" data-tab="tracked">Tracked</button>
+      <button class="tab active" data-tab="deals">🔥 Deals</button>
+      <button class="tab" data-tab="tracked">📌 Tracked</button>
     </nav>
   </header>
 
   <main>
     <section id="view-deals" class="view">
       <div id="deal-cats" class="chips"></div>
-      <div id="deals-list" class="cards"><div class="empty">Loading…</div></div>
+      <div id="deals-list" class="cards">
+        <div class="skel"></div><div class="skel"></div><div class="skel"></div>
+      </div>
     </section>
 
     <section id="view-tracked" class="view hidden">
       <form id="track-form">
         <input id="track-input" type="text" placeholder="Paste Amazon link or ASIN…" required>
-        <input id="track-pct" type="number" min="1" max="95" value="50" title="drop %">
+        <input id="track-pct" type="number" min="1" max="95" value="50" title="alert when price drops this % below the 90-day median">
         <button type="submit">Track</button>
       </form>
-      <div id="tracked-list" class="cards"><div class="empty">Loading…</div></div>
+      <div id="tracked-list" class="cards">
+        <div class="skel"></div><div class="skel"></div>
+      </div>
     </section>
 
     <section id="view-product" class="view hidden">
       <button id="back-btn">← Back</button>
       <h2 id="product-title"></h2>
       <div id="product-meta" class="meta"></div>
-      <svg id="chart" viewBox="0 0 320 160" preserveAspectRatio="none"></svg>
-      <div id="chart-legend" class="meta"></div>
+      <div class="chart-wrap">
+        <svg id="chart" viewBox="0 0 320 190" preserveAspectRatio="none"></svg>
+        <div id="chart-legend"></div>
+      </div>
+      <div id="product-stats" class="stats"></div>
     </section>
   </main>
+
+  <!-- onboarding / tutorial -->
+  <div id="onboard" class="hidden">
+    <div class="sheet">
+      <div class="step-art" id="ob-art">📌</div>
+      <h3 id="ob-title"></h3>
+      <p id="ob-text"></p>
+      <div class="dots" id="ob-dots"></div>
+      <div class="sheet-btns">
+        <button class="ghost" id="ob-skip">Skip</button>
+        <button class="cta" id="ob-next">Next</button>
+      </div>
+    </div>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>
