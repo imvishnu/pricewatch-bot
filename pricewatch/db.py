@@ -166,3 +166,43 @@ def record_alert(conn: psycopg.Connection, tracking_id: int, price: float,
         "INSERT INTO alerts_sent (tracking_id, price, baseline) VALUES (%s, %s, %s)",
         (tracking_id, price, baseline),
     )
+
+
+# --- channel deals ------------------------------------------------------------
+
+def users_opted_into_category(conn: psycopg.Connection, category: str) -> list[int]:
+    """Telegram ids of users who EXPLICITLY opted into this category.
+
+    Channel-deal relay is strict opt-in: users with no category filter
+    receive nothing (unlike the poller, where empty means all).
+    """
+    rows = conn.execute(
+        """
+        SELECT u.telegram_id
+        FROM users u JOIN user_categories c ON c.user_id = u.id
+        WHERE c.category = %s
+        """,
+        (category,),
+    ).fetchall()
+    return [r["telegram_id"] for r in rows]
+
+
+def try_claim_channel_deal(conn: psycopg.Connection, channel_msg_id: int,
+                           asin: str, category: str) -> bool:
+    """Record a channel deal; False if this ASIN was already relayed (de-dupe)."""
+    row = conn.execute(
+        """
+        INSERT INTO channel_deals (channel_msg_id, asin, category)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (asin) DO NOTHING
+        RETURNING id
+        """,
+        (channel_msg_id, asin, category),
+    ).fetchone()
+    return row is not None
+
+
+def set_channel_deal_relay_count(conn: psycopg.Connection, asin: str,
+                                 count: int) -> None:
+    conn.execute("UPDATE channel_deals SET relayed_to = %s WHERE asin = %s",
+                 (count, asin))

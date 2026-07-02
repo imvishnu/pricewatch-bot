@@ -47,6 +47,28 @@ Set `PRICE_SOURCE` in `.env`:
   24-hour-window / template-message rule.
 - `pricewatch/db.py` — all SQL (psycopg v3); schema in `schema.sql`.
 
+## Channel watcher (optional)
+
+`pricewatch/channelwatch.py` watches a Telegram deals channel and relays
+posts containing Amazon links to users — **strict opt-in**: a user only
+receives channel deals for categories they explicitly set via
+`/categories` (no filter → no channel deals). Each post's product is
+scraped to determine its category; repeated posts of the same ASIN are
+de-duped.
+
+Because bots can't join arbitrary channels, this uses your *personal*
+Telegram account via Telethon (MTProto):
+
+1. Join the deals channel with your own account (invite link).
+2. Get `api_id`/`api_hash` at https://my.telegram.org → fill `TG_API_ID`,
+   `TG_API_HASH`, `WATCH_CHANNEL` in `.env`.
+3. One-time interactive login (phone + code): `python -m pricewatch.channelwatch --login`
+4. Run as a service: `python -m pricewatch.channelwatch`
+   (systemd unit: `pricewatch-channelwatch.service`, same shape as the bot unit).
+
+⚠️ Automated reading with a user account is a gray area under Telegram's
+ToS — keep it at personal scale.
+
 ## Setup
 
 ```bash

@@ -51,3 +51,15 @@ CREATE TABLE IF NOT EXISTS alerts_sent (
 
 CREATE INDEX IF NOT EXISTS idx_alerts_tracking_time
     ON alerts_sent (tracking_id, sent_at DESC);
+
+-- Deals relayed from a watched Telegram channel (channelwatch.py).
+-- UNIQUE(asin) de-dupes repeated posts of the same product.
+CREATE TABLE IF NOT EXISTS channel_deals (
+    id             BIGSERIAL PRIMARY KEY,
+    channel_msg_id BIGINT NOT NULL,
+    asin           TEXT NOT NULL,
+    category       TEXT NOT NULL DEFAULT '',
+    relayed_to     INT NOT NULL DEFAULT 0,
+    seen_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (asin)
+);
