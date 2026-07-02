@@ -63,7 +63,7 @@ Telegram account via Telethon (MTProto):
 
 1. Join the deals channel with your own account (invite link).
 2. Get `api_id`/`api_hash` at https://my.telegram.org → fill `TG_API_ID`,
-   `TG_API_HASH`, `WATCH_CHANNEL` in `.env`.
+   `TG_API_HASH`, `WATCH_CHANNELS` in `.env`.
 3. One-time interactive login (phone + code): `python -m pricewatch.channelwatch --login`
 4. Run as a service: `python -m pricewatch.channelwatch`
    (systemd unit: `pricewatch-channelwatch.service`, same shape as the bot unit).

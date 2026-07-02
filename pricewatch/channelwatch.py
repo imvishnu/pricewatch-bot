@@ -30,6 +30,7 @@ import re
 import sys
 
 from telethon import TelegramClient, events
+from telethon.tl.functions.channels import JoinChannelRequest
 
 from . import db
 from .asin import extract_asin, is_short_link, resolve_asin
@@ -42,15 +43,19 @@ log = logging.getLogger(__name__)
 _URL_RE = re.compile(r"https?://\S+|amzn\.\w+/\S+")
 
 
-def _channel_env() -> tuple[int, str, str, str]:
+def _channel_env() -> tuple[int, str, str, list[str]]:
     api_id = os.environ.get("TG_API_ID", "").strip()
     api_hash = os.environ.get("TG_API_HASH", "").strip()
     session = os.environ.get("TG_SESSION", "channelwatch.session").strip()
-    channel = os.environ.get("WATCH_CHANNEL", "").strip()
-    if not (api_id and api_hash and channel):
+    # WATCH_CHANNELS: comma-separated @usernames/links; falls back to the
+    # legacy singular WATCH_CHANNEL.
+    raw = (os.environ.get("WATCH_CHANNELS", "").strip()
+           or os.environ.get("WATCH_CHANNEL", "").strip())
+    channels = [c.strip() for c in raw.split(",") if c.strip()]
+    if not (api_id and api_hash and channels):
         raise ConfigError("channelwatch requires TG_API_ID, TG_API_HASH and "
-                          "WATCH_CHANNEL (invite link, @username or channel id)")
-    return int(api_id), api_hash, session, channel
+                          "WATCH_CHANNELS (comma-separated links/@usernames)")
+    return int(api_id), api_hash, session, channels
 
 
 async def extract_deal_asin(text: str) -> str | None:
@@ -83,6 +88,11 @@ async def handle_post(conn, source: ScraperSource, notifier: TelegramNotifier,
         log.warning("scrape failed for channel deal %s: %s", asin, exc)
         return
 
+    # Every spotted deal feeds the shared price-history pool, so channel
+    # products accumulate snapshots and can surface in "Top genuine deals".
+    db.upsert_product(conn, asin, result.title, result.category)
+    db.add_snapshot(conn, asin, result.price, result.currency)
+
     if not result.category:
         log.info("deal %s has no category — nobody to notify", asin)
         return
@@ -105,7 +115,7 @@ async def handle_post(conn, source: ScraperSource, notifier: TelegramNotifier,
 
 async def amain(login_only: bool = False) -> None:
     config = Config.from_env()
-    api_id, api_hash, session, channel = _channel_env()
+    api_id, api_hash, session, channels = _channel_env()
 
     client = TelegramClient(session, api_id, api_hash)
     await client.start()  # interactive phone/code prompt on first run
@@ -116,14 +126,27 @@ async def amain(login_only: bool = False) -> None:
         await client.disconnect()
         return
 
-    entity = await client.get_entity(channel)
-    log.info("watching channel: %s", getattr(entity, "title", channel))
+    entities = []
+    for channel in channels:
+        try:
+            entity = await client.get_entity(channel)
+            # Public channels can be joined automatically (idempotent).
+            try:
+                await client(JoinChannelRequest(entity))
+            except Exception:  # noqa: BLE001 — already a member / private
+                pass
+            entities.append(entity)
+            log.info("watching channel: %s", getattr(entity, "title", channel))
+        except Exception as exc:  # noqa: BLE001 — keep watching the rest
+            log.error("cannot watch %s: %s", channel, exc)
+    if not entities:
+        raise ConfigError("no watchable channels resolved")
 
     conn = db.connect(config.database_url)
     source = ScraperSource()
     notifier = TelegramNotifier(config.telegram_bot_token)
 
-    @client.on(events.NewMessage(chats=entity))
+    @client.on(events.NewMessage(chats=entities))
     async def _on_post(event):  # noqa: ANN001
         try:
             await handle_post(conn, source, notifier,
