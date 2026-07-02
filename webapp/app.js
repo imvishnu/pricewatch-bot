@@ -79,13 +79,22 @@ function showTab(name) {
 
 /* ================= deals ================= */
 let activeCat = "all";
+let allCategories = [];
+let myCategories = [];
+
 async function loadDeals() {
+  let data;
   try {
-    dealsCache = (await api("/api/deals")).deals;
+    data = await api("/api/deals");
   } catch (e) {
     $("deals-list").innerHTML = `<div class="empty">${e.message}</div>`;
+    $("top-deals").innerHTML = "";
     return;
   }
+  dealsCache = data.deals;
+  allCategories = data.all_categories || [];
+  myCategories = data.my_categories || [];
+  renderTopDeals(data.top_deals || []);
   const cats = [...new Set(dealsCache.map((d) => d.category).filter(Boolean))];
   $("deal-cats").innerHTML =
     [`<button class="chip ${activeCat === "all" ? "active" : ""}" data-cat="all">All</button>`]
@@ -99,6 +108,59 @@ async function loadDeals() {
     }));
   renderDeals();
 }
+
+function renderTopDeals(top) {
+  $("top-deals").innerHTML = top.length
+    ? top.map((d, i) => `
+      <div class="card" data-asin="${d.asin}">
+        <div class="rank">#${i + 1} · ▼${d.drop_pct}%</div>
+        <div class="title">${d.title}</div>
+        <div class="row">
+          <span class="price">${inr(d.latest_price)}</span>
+          <span class="cat">median ${inrPlain(d.median_price)}</span>
+        </div>
+      </div>`).join("")
+    : `<div class="empty">No verified deals yet — products need ~10 days of
+       price history before a drop can be certified genuine.</div>`;
+  $("top-deals").querySelectorAll(".card").forEach((c) =>
+    c.addEventListener("click", () => openProduct(c.dataset.asin)));
+}
+
+/* ---- category preferences sheet ---- */
+let pendingCats = [];
+function openCatsSheet() {
+  pendingCats = [...myCategories];
+  renderCatsChips();
+  $("cats-sheet").classList.remove("hidden");
+}
+function renderCatsChips() {
+  $("cats-chips").innerHTML = allCategories.map((c) =>
+    `<button type="button" class="chip ${pendingCats.includes(c) ? "active" : ""}"
+       data-cat="${c}">${c}</button>`).join("");
+  $("cats-chips").querySelectorAll(".chip").forEach((ch) =>
+    ch.addEventListener("click", () => {
+      const c = ch.dataset.cat;
+      pendingCats = pendingCats.includes(c)
+        ? pendingCats.filter((x) => x !== c) : [...pendingCats, c];
+      renderCatsChips();
+      tg.HapticFeedback?.selectionChanged();
+    }));
+}
+$("cats-btn").addEventListener("click", openCatsSheet);
+$("cats-cancel").addEventListener("click", () => $("cats-sheet").classList.add("hidden"));
+$("cats-save").addEventListener("click", async () => {
+  try {
+    await api("/api/categories", {
+      method: "POST",
+      body: JSON.stringify({ categories: pendingCats }),
+    });
+    myCategories = [...pendingCats];
+    $("cats-sheet").classList.add("hidden");
+    tg.HapticFeedback?.notificationOccurred("success");
+  } catch (e) {
+    tg.showAlert(e.message);
+  }
+});
 
 function renderDeals() {
   $("deal-cats").querySelectorAll(".chip").forEach((ch) =>

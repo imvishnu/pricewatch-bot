@@ -264,6 +264,47 @@ def list_channel_deals(conn: psycopg.Connection, limit: int = 50) -> list[dict]:
     ).fetchall()
 
 
+def top_genuine_deals(conn: psycopg.Connection, limit: int = 10) -> list[dict]:
+    """Products currently priced below their own 90-day median.
+
+    'Genuine' = at least 10 accumulated snapshots (same gate as alerts), so
+    the discount is measured against real observed history, not claimed MRP.
+    """
+    return conn.execute(
+        """
+        WITH latest AS (
+            SELECT DISTINCT ON (asin) asin, price
+            FROM price_snapshots ORDER BY asin, captured_at DESC
+        ), stats AS (
+            SELECT asin,
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY price) AS median,
+                   count(*) AS n
+            FROM price_snapshots
+            WHERE captured_at >= now() - interval '90 days'
+            GROUP BY asin
+        )
+        SELECT p.asin, p.title, p.category,
+               l.price AS latest_price, s.median AS median_price,
+               (s.median - l.price) / s.median * 100 AS drop_pct
+        FROM stats s
+        JOIN latest l USING (asin)
+        JOIN products p USING (asin)
+        WHERE s.n >= 10 AND s.median > 0 AND l.price < s.median
+        ORDER BY drop_pct DESC
+        LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+
+
+def all_known_categories(conn: psycopg.Connection) -> list[str]:
+    rows = conn.execute(
+        "SELECT DISTINCT category FROM products WHERE category <> '' "
+        "ORDER BY category",
+    ).fetchall()
+    return [r["category"] for r in rows]
+
+
 def deactivate_tracking(conn: psycopg.Connection, user_id: int, asin: str) -> None:
     conn.execute(
         "UPDATE trackings SET active = FALSE WHERE user_id = %s AND asin = %s",

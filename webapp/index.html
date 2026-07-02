@@ -22,6 +22,18 @@
 
   <main>
     <section id="view-deals" class="view">
+      <div class="section-head">
+        <h2>🏆 Top genuine deals</h2>
+        <span class="hint-txt">vs own 90-day history</span>
+      </div>
+      <div id="top-deals" class="cards">
+        <div class="skel"></div><div class="skel"></div>
+      </div>
+
+      <div class="section-head">
+        <h2>📣 From the channel</h2>
+        <button id="cats-btn" class="chip">⚙️ My categories</button>
+      </div>
       <div id="deal-cats" class="chips"></div>
       <div id="deals-list" class="cards">
         <div class="skel"></div><div class="skel"></div><div class="skel"></div>
@@ -50,6 +62,20 @@
       <div id="product-stats" class="stats"></div>
     </section>
   </main>
+
+  <!-- category preferences -->
+  <div id="cats-sheet" class="hidden">
+    <div class="sheet">
+      <h3>Alert categories</h3>
+      <p>Deals from the watched channel are pushed to you in chat <b>only</b> for
+         categories you pick here. Pick none to receive no channel alerts.</p>
+      <div id="cats-chips" class="chips wrap"></div>
+      <div class="sheet-btns">
+        <button class="ghost" id="cats-cancel">Cancel</button>
+        <button class="cta" id="cats-save">Save</button>
+      </div>
+    </div>
+  </div>
 
   <!-- onboarding / tutorial -->
   <div id="onboard" class="hidden">

@@ -106,14 +106,33 @@ def api_tracked(user_id: int = Depends(auth_user)):
     return {"tracked": out, "categories": db.get_user_categories(_db(), user_id)}
 
 
+PRESET_CATEGORIES = [
+    "electronics", "computers & accessories", "clothing & accessories",
+    "shoes & handbags", "home & kitchen", "beauty", "toys & games",
+    "sports, fitness & outdoors", "books", "grocery & gourmet foods",
+]
+
+
 @app.get("/api/deals")
 def api_deals(user_id: int = Depends(auth_user)):
     rows = db.list_channel_deals(_db())
-    return {"deals": [{
-        "asin": r["asin"], "title": r["title"] or r["asin"],
-        "category": r["category"], "latest_price": _num(r["latest_price"]),
-        "seen_at": r["seen_at"].isoformat(),
-    } for r in rows]}
+    top = db.top_genuine_deals(_db())
+    cats = sorted(set(PRESET_CATEGORIES) | set(db.all_known_categories(_db())))
+    return {
+        "deals": [{
+            "asin": r["asin"], "title": r["title"] or r["asin"],
+            "category": r["category"], "latest_price": _num(r["latest_price"]),
+            "seen_at": r["seen_at"].isoformat(),
+        } for r in rows],
+        "top_deals": [{
+            "asin": r["asin"], "title": r["title"] or r["asin"],
+            "category": r["category"], "latest_price": _num(r["latest_price"]),
+            "median_price": _num(r["median_price"]),
+            "drop_pct": round(float(r["drop_pct"]), 1),
+        } for r in top],
+        "all_categories": cats,
+        "my_categories": db.get_user_categories(_db(), user_id),
+    }
 
 
 @app.get("/api/product/{asin}")
