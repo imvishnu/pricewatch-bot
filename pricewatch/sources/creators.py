@@ -100,7 +100,7 @@ class CreatorsAPISource(PriceSource):
         return PriceResult(asin=asin, price=price, currency=currency,
                            title=title, category=category.lower())
 
-    def affiliate_link(self, asin: str) -> str:
+    def product_link(self, asin: str) -> str:
         return f"https://{MARKETPLACE}/dp/{asin}?tag={self._partner_tag}"
 
     async def aclose(self) -> None:

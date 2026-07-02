@@ -29,3 +29,7 @@ class PriceSource(ABC):
         the poller logs and skips that product for the run.
         """
         raise NotImplementedError
+
+    def product_link(self, asin: str) -> str:
+        """Link to include in alerts. Sources may add affiliate tags."""
+        return f"https://www.amazon.in/dp/{asin}"

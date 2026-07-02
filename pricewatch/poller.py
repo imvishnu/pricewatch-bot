@@ -12,18 +12,37 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from collections import defaultdict
 
 from . import compare, db
 from .config import Config
 from .notify.telegram import TelegramNotifier
+from .sources.base import PriceSource
 from .sources.creators import CreatorsAPISource
+from .sources.scraper import ScraperSource
 
 log = logging.getLogger(__name__)
 
 # Creators API starter limit is 1 TPS / 8640 requests per day —
 # sleep a bit over 1s between fetches to stay under it.
-FETCH_INTERVAL_S = 1.1
+CREATORS_INTERVAL_S = 1.1
+# Scraper: be polite and reduce blocking risk — slower, with jitter.
+SCRAPER_INTERVAL_S = 2.5
+
+
+def build_source(config: Config) -> PriceSource:
+    if config.price_source == "creators":
+        return CreatorsAPISource(config.creators_client_id,
+                                 config.creators_client_secret,
+                                 config.partner_tag)
+    return ScraperSource()
+
+
+def fetch_interval(config: Config) -> float:
+    if config.price_source == "creators":
+        return CREATORS_INTERVAL_S
+    return SCRAPER_INTERVAL_S + random.uniform(0, 1.5)
 
 
 def format_alert(title: str, asin: str, price: float, baseline: float,
@@ -35,7 +54,8 @@ def format_alert(title: str, asin: str, price: float, baseline: float,
     )
 
 
-async def run_once(conn, source: CreatorsAPISource, notifier: TelegramNotifier) -> None:
+async def run_once(conn, source: PriceSource, notifier: TelegramNotifier,
+                   interval_s: float = SCRAPER_INTERVAL_S) -> None:
     trackings = db.list_active_trackings(conn)
     by_asin: dict[str, list[db.ActiveTracking]] = defaultdict(list)
     for t in trackings:
@@ -45,7 +65,7 @@ async def run_once(conn, source: CreatorsAPISource, notifier: TelegramNotifier) 
     first = True
     for asin, asin_trackings in by_asin.items():
         if not first:
-            await asyncio.sleep(FETCH_INTERVAL_S)
+            await asyncio.sleep(interval_s)
         first = False
 
         try:
@@ -77,7 +97,7 @@ async def run_once(conn, source: CreatorsAPISource, notifier: TelegramNotifier) 
 
             text = format_alert(result.title, asin, result.price,
                                 decision.baseline, decision.drop_pct,
-                                source.affiliate_link(asin))
+                                source.product_link(asin))
             if await notifier.send(str(t.telegram_id), text):
                 db.record_alert(conn, t.tracking_id, result.price, decision.baseline)
                 log.info("alerted tracking %d for %s at %.2f",
@@ -87,12 +107,11 @@ async def run_once(conn, source: CreatorsAPISource, notifier: TelegramNotifier) 
 async def amain() -> None:
     config = Config.from_env()
     conn = db.connect(config.database_url)
-    source = CreatorsAPISource(config.creators_client_id,
-                               config.creators_client_secret,
-                               config.partner_tag)
+    source = build_source(config)
+    log.info("using price source: %s", config.price_source)
     notifier = TelegramNotifier(config.telegram_bot_token)
     try:
-        await run_once(conn, source, notifier)
+        await run_once(conn, source, notifier, fetch_interval(config))
     finally:
         await source.aclose()
         await notifier.aclose()

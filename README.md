@@ -4,18 +4,30 @@ Telegram bot that sends **Amazon India price-drop alerts**. Users track
 products via the bot; a scheduled poller snapshots prices and alerts when a
 product falls at or below a chosen % under its **90-day median** price.
 
+## Price sources
+
+Set `PRICE_SOURCE` in `.env`:
+
+- **`scraper` (default)** — fetches amazon.in product pages directly and
+  parses the price/title/category. No affiliate account or credentials
+  needed; alert links are plain product URLs. Trade-offs: page markup can
+  change without notice, and Amazon may serve CAPTCHA/503 responses if
+  polled too aggressively (the poller paces requests ~2.5–4 s apart and
+  skips blocked products for the run).
+- **`creators`** — Amazon Creators API (requires `CREATORS_CLIENT_ID`,
+  `CREATORS_CLIENT_SECRET`, `PARTNER_TAG`); alert links carry your
+  affiliate tag.
+
 ## ⚠️ Important caveats
 
-- **Creators API eligibility:** Amazon's Creators API requires your
-  Associates account to have **10 qualifying sales in a trailing 30-day
-  window** to keep API access active. If you fall below that, price fetches
-  will start failing.
 - **Alert warm-up:** there is no external price-history source — the poller
   accumulates its own snapshots. A product needs **at least 10 snapshots
   (~10 days at one poll/day)** before any alert can fire.
-- The exact Creators API request/response shapes in
-  `pricewatch/sources/creators.py` are marked with `# confirm against docs`
-  — verify them against Associates Central documentation before deploying.
+- **Creators API eligibility** (only if `PRICE_SOURCE=creators`): Amazon
+  requires **10 qualifying sales in a trailing 30-day window** to keep API
+  access active, and the request/response shapes in
+  `pricewatch/sources/creators.py` are marked `# confirm against docs` —
+  verify them against Associates Central documentation before use.
 
 ## How it works
 
@@ -27,8 +39,9 @@ product falls at or below a chosen % under its **90-day median** price.
 - `pricewatch/compare.py` — pure logic: median-of-90-days baseline,
   ≥10-snapshot gate, threshold check, and de-dupe (re-alert only on a
   strictly lower price).
-- `pricewatch/sources/` — `PriceSource` abstraction; `CreatorsAPISource`
-  implemented. A scraper source can be dropped in without touching anything else.
+- `pricewatch/sources/` — `PriceSource` abstraction; `ScraperSource`
+  (default) and `CreatorsAPISource` implemented; new sources drop in
+  without touching anything else.
 - `pricewatch/notify/` — `Notifier` abstraction; `TelegramNotifier`
   implemented, `whatsapp.py` holds a stub noting the WhatsApp Cloud API
   24-hour-window / template-message rule.
