@@ -9,8 +9,12 @@ get its category → send the deal via the bot to users who EXPLICITLY opted
 into that category with /categories (strict opt-in: users with no filter
 get nothing). De-duped per ASIN via the channel_deals table.
 
-First run (interactive login, creates the session file):
+First run — login (creates the session file). Interactive terminal:
     python -m pricewatch.channelwatch --login
+Non-interactive (no TTY), two steps:
+    python -m pricewatch.channelwatch --login-phone +91XXXXXXXXXX
+    # Telegram sends a code to your account, then:
+    python -m pricewatch.channelwatch --login-code 12345 [--password 2fa-pw]
 Then run as a service:
     python -m pricewatch.channelwatch
 
@@ -24,6 +28,7 @@ ToS; keep it to personal scale.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -113,6 +118,47 @@ async def handle_post(conn, source: ScraperSource, notifier: TelegramNotifier,
              asin, result.category, sent, len(recipients))
 
 
+def _login_state_path(session: str) -> str:
+    return session + ".login.json"
+
+
+async def login_phone(phone: str) -> None:
+    """Step 1 of non-interactive login: request a code."""
+    api_id, api_hash, session, _ = _channel_env()
+    client = TelegramClient(session, api_id, api_hash)
+    await client.connect()
+    sent = await client.send_code_request(phone)
+    with open(_login_state_path(session), "w") as f:
+        json.dump({"phone": phone, "phone_code_hash": sent.phone_code_hash}, f)
+    await client.disconnect()
+    print(f"Code sent to {phone} via Telegram. Now run: "
+          f"python -m pricewatch.channelwatch --login-code <code>")
+
+
+async def login_code(code: str, password: str | None = None) -> None:
+    """Step 2: sign in with the received code (and 2FA password if set)."""
+    from telethon.errors import SessionPasswordNeededError
+
+    api_id, api_hash, session, _ = _channel_env()
+    with open(_login_state_path(session)) as f:
+        state = json.load(f)
+    client = TelegramClient(session, api_id, api_hash)
+    await client.connect()
+    try:
+        await client.sign_in(state["phone"], code,
+                             phone_code_hash=state["phone_code_hash"])
+    except SessionPasswordNeededError:
+        if not password:
+            print("2FA enabled — re-run with: --login-code <code> --password <pw>")
+            await client.disconnect()
+            return
+        await client.sign_in(password=password)
+    me = await client.get_me()
+    print(f"Login OK — signed in as {me.first_name} ({me.id}). Session saved.")
+    os.remove(_login_state_path(session))
+    await client.disconnect()
+
+
 async def amain(login_only: bool = False) -> None:
     config = Config.from_env()
     api_id, api_hash, session, channels = _channel_env()
@@ -157,10 +203,25 @@ async def amain(login_only: bool = False) -> None:
     await client.run_until_disconnected()
 
 
+def _arg_value(flag: str) -> str | None:
+    if flag in sys.argv:
+        i = sys.argv.index(flag)
+        if i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    return None
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    asyncio.run(amain(login_only="--login" in sys.argv))
+    phone = _arg_value("--login-phone")
+    code = _arg_value("--login-code")
+    if phone:
+        asyncio.run(login_phone(phone))
+    elif code:
+        asyncio.run(login_code(code, _arg_value("--password")))
+    else:
+        asyncio.run(amain(login_only="--login" in sys.argv))
 
 
 if __name__ == "__main__":
