@@ -69,6 +69,24 @@ Telegram account via Telethon (MTProto):
 ⚠️ Automated reading with a user account is a gray area under Telegram's
 ToS — keep it at personal scale.
 
+## Mini App
+
+A Telegram Mini App (tap the bot's menu button) with a wc26.watch-style
+tabbed dashboard:
+
+- **Deals** — feed of channel-spotted deals, filterable by category chips
+- **Tracked** — your products with current price, ▼% vs 90-day median
+  badge (or "warming up n/10"), inline add/remove
+- **Product view** — SVG price-history chart with median line
+
+Stack: FastAPI backend (`pricewatch/webapp.py`) + static frontend
+(`webapp/`), themed automatically from the user's Telegram theme. Auth:
+every API call validates Telegram WebApp `initData` (HMAC with the bot
+token) — no separate login. Served over HTTPS by Caddy
+(`/etc/caddy/Caddyfile`, sslip.io + Let's Encrypt), run by
+`pricewatch-webapp.service` (uvicorn on 127.0.0.1:8080). The bot's menu
+button is set via `setChatMenuButton` to the public URL.
+
 ## Setup
 
 ```bash

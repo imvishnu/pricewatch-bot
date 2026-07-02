@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>pricewatch</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>pricewatch</h1>
+    <nav id="tabs">
+      <button class="tab active" data-tab="deals">Deals</button>
+      <button class="tab" data-tab="tracked">Tracked</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-deals" class="view">
+      <div id="deal-cats" class="chips"></div>
+      <div id="deals-list" class="cards"><div class="empty">Loading…</div></div>
+    </section>
+
+    <section id="view-tracked" class="view hidden">
+      <form id="track-form">
+        <input id="track-input" type="text" placeholder="Paste Amazon link or ASIN…" required>
+        <input id="track-pct" type="number" min="1" max="95" value="50" title="drop %">
+        <button type="submit">Track</button>
+      </form>
+      <div id="tracked-list" class="cards"><div class="empty">Loading…</div></div>
+    </section>
+
+    <section id="view-product" class="view hidden">
+      <button id="back-btn">← Back</button>
+      <h2 id="product-title"></h2>
+      <div id="product-meta" class="meta"></div>
+      <svg id="chart" viewBox="0 0 320 160" preserveAspectRatio="none"></svg>
+      <div id="chart-legend" class="meta"></div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

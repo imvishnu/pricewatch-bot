@@ -206,3 +206,66 @@ def set_channel_deal_relay_count(conn: psycopg.Connection, asin: str,
                                  count: int) -> None:
     conn.execute("UPDATE channel_deals SET relayed_to = %s WHERE asin = %s",
                  (count, asin))
+
+
+# --- webapp queries -----------------------------------------------------------
+
+def tracked_with_stats(conn: psycopg.Connection, user_id: int) -> list[dict]:
+    """Active trackings with latest price, 90-day median and snapshot count."""
+    return conn.execute(
+        """
+        SELECT t.asin, t.threshold_pct, p.title, p.category,
+               (SELECT price FROM price_snapshots s
+                WHERE s.asin = t.asin ORDER BY captured_at DESC LIMIT 1) AS latest_price,
+               (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY price)
+                FROM price_snapshots s
+                WHERE s.asin = t.asin
+                  AND captured_at >= now() - interval '90 days') AS median_price,
+               (SELECT count(*) FROM price_snapshots s
+                WHERE s.asin = t.asin
+                  AND captured_at >= now() - interval '90 days') AS snapshot_count
+        FROM trackings t JOIN products p USING (asin)
+        WHERE t.user_id = %s AND t.active
+        ORDER BY t.created_at DESC
+        """,
+        (user_id,),
+    ).fetchall()
+
+
+def product_detail(conn: psycopg.Connection, asin: str) -> dict | None:
+    return conn.execute(
+        "SELECT asin, title, category FROM products WHERE asin = %s",
+        (asin,),
+    ).fetchone()
+
+
+def product_snapshots(conn: psycopg.Connection, asin: str,
+                      days: int = 90) -> list[dict]:
+    return conn.execute(
+        """
+        SELECT price, captured_at FROM price_snapshots
+        WHERE asin = %s AND captured_at >= now() - make_interval(days => %s)
+        ORDER BY captured_at
+        """,
+        (asin, days),
+    ).fetchall()
+
+
+def list_channel_deals(conn: psycopg.Connection, limit: int = 50) -> list[dict]:
+    return conn.execute(
+        """
+        SELECT d.asin, d.category, d.seen_at, p.title,
+               (SELECT price FROM price_snapshots s
+                WHERE s.asin = d.asin ORDER BY captured_at DESC LIMIT 1) AS latest_price
+        FROM channel_deals d LEFT JOIN products p USING (asin)
+        ORDER BY d.seen_at DESC LIMIT %s
+        """,
+        (limit,),
+    ).fetchall()
+
+
+def deactivate_tracking(conn: psycopg.Connection, user_id: int, asin: str) -> None:
+    conn.execute(
+        "UPDATE trackings SET active = FALSE WHERE user_id = %s AND asin = %s",
+        (user_id, asin),
+    )
