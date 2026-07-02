@@ -31,7 +31,9 @@ Set `PRICE_SOURCE` in `.env`:
 
 ## How it works
 
-- `pricewatch/bot.py` — long-running Telegram bot (`/start`, `/track <url|ASIN> [drop%]`,
+- `pricewatch/bot.py` — long-running Telegram bot (`/start`,
+  `/track <url|wish-list link|ASIN> [drop%]` — a public wish-list share
+  link imports every item (first 50) as individual trackings,
   `/categories a, b`, `/list`). Thresholds default to 50%, clamped 1–95.
 - `pricewatch/poller.py` — periodic job: one fetch per tracked ASIN
   (~1.1 s apart to respect the Creators API 1 TPS / 8640-per-day starter

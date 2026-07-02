@@ -31,7 +31,7 @@ const inrPlain = (n) =>
 /* ================= onboarding / tutorial ================= */
 const OB_STEPS = [
   { art: "📌", title: "Track any Amazon.in product",
-    text: "Paste a product link (or forward one from a deals channel) in the Tracked tab. Set how big a drop you care about — default is 50% below the product's 90-day median price." },
+    text: "Paste a product link — or a whole wish-list share link to import every item on it. Set how big a drop you care about — default is 50% below the product's 90-day median price." },
   { art: "📉", title: "Real drops, not fake MRP discounts",
     text: "We snapshot prices every few hours and compare against the median — so inflated “was ₹9,999” prices don't fool the alerts. Each product warms up with ~10 snapshots first." },
   { art: "🔥", title: "Deals feed, filtered your way",
@@ -170,13 +170,15 @@ $("track-form").addEventListener("submit", async (ev) => {
   const btn = ev.target.querySelector("button");
   btn.textContent = "…";
   try {
-    await api("/api/track", {
+    const res = await api("/api/track", {
       method: "POST",
       body: JSON.stringify({
         target: $("track-input").value.trim(),
         threshold_pct: Number($("track-pct").value) || 50,
       }),
     });
+    if (res.imported != null)
+      tg.showAlert(`Imported ${res.imported} products from “${res.list_name}” 🎉`);
     $("track-input").value = "";
     tg.HapticFeedback?.notificationOccurred("success");
     loadTracked();

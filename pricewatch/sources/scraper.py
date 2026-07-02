@@ -79,6 +79,53 @@ def parse_product_page(html: str, asin: str) -> PriceResult:
                        title=title, category=category)
 
 
+MAX_WISHLIST_ITEMS = 50
+
+_DP_HREF_RE = re.compile(r"/dp/([A-Z0-9]{10})(?:[/?]|$)", re.IGNORECASE)
+
+
+def parse_wishlist_page(html: str) -> tuple[str, list[str]]:
+    """Parse an Amazon wish-list page -> (list title, unique ASINs in order).
+
+    Raises ScraperError on CAPTCHA or if no items can be found (e.g. the
+    list is private).
+    """
+    tree = HTMLParser(html)
+
+    page_title = tree.css_first("title")
+    if page_title and "robot check" in page_title.text().lower():
+        raise ScraperError("bot-blocked (CAPTCHA page) for wishlist")
+
+    name_node = tree.css_first("#profile-list-name") or tree.css_first("h1")
+    list_name = name_node.text(strip=True) if name_node else "your list"
+
+    asins: list[str] = []
+    seen: set[str] = set()
+    # Wish-list items are li[data-itemid]; product links inside carry /dp/ASIN.
+    for li in tree.css("li[data-itemid]"):
+        for a in li.css("a[href]"):
+            m = _DP_HREF_RE.search(a.attributes.get("href") or "")
+            if m:
+                asin = m.group(1).upper()
+                if asin not in seen:
+                    seen.add(asin)
+                    asins.append(asin)
+                break
+    # Fallback for markup variants: any /dp/ links on the page.
+    if not asins:
+        for a in tree.css("a[href]"):
+            m = _DP_HREF_RE.search(a.attributes.get("href") or "")
+            if m:
+                asin = m.group(1).upper()
+                if asin not in seen:
+                    seen.add(asin)
+                    asins.append(asin)
+
+    if not asins:
+        raise ScraperError("no items found — is the list public/shared via link?")
+    return list_name, asins[:MAX_WISHLIST_ITEMS]
+
+
 class ScraperSource(PriceSource):
     def __init__(self, client: httpx.AsyncClient | None = None):
         self._client = client or httpx.AsyncClient(
@@ -87,16 +134,24 @@ class ScraperSource(PriceSource):
     def product_link(self, asin: str) -> str:
         return f"{BASE_URL}/dp/{asin}"
 
-    async def fetch(self, asin: str) -> PriceResult:
-        url = self.product_link(asin)
+    async def _get(self, url: str, what: str) -> str:
         resp = await self._client.get(url)
         if resp.status_code == 503:
             # transient throttle — back off once and retry
             await asyncio.sleep(5)
             resp = await self._client.get(url)
         if resp.status_code != 200:
-            raise ScraperError(f"HTTP {resp.status_code} for {asin}")
-        return parse_product_page(resp.text, asin)
+            raise ScraperError(f"HTTP {resp.status_code} for {what}")
+        return resp.text
+
+    async def fetch(self, asin: str) -> PriceResult:
+        html = await self._get(self.product_link(asin), asin)
+        return parse_product_page(html, asin)
+
+    async def fetch_wishlist(self, url: str) -> tuple[str, list[str]]:
+        """(list name, ASINs) for a public wish-list share link."""
+        html = await self._get(url, "wishlist")
+        return parse_wishlist_page(html)
 
     async def aclose(self) -> None:
         await self._client.aclose()

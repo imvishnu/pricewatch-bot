@@ -22,8 +22,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import db
-from .asin import clamp_threshold, resolve_asin
+from .asin import clamp_threshold, is_wishlist_link, resolve_asin
 from .config import Config
+from .sources.scraper import ScraperError, ScraperSource
 
 INIT_DATA_MAX_AGE_S = 24 * 3600
 WEBAPP_DIR = Path(__file__).resolve().parent.parent / "webapp"
@@ -135,10 +136,26 @@ class TrackBody(BaseModel):
 
 @app.post("/api/track")
 async def api_track(body: TrackBody, user_id: int = Depends(auth_user)):
+    threshold = clamp_threshold(body.threshold_pct)
+
+    if is_wishlist_link(body.target):
+        scraper = ScraperSource()
+        try:
+            list_name, asins = await scraper.fetch_wishlist(body.target)
+        except ScraperError as exc:
+            raise HTTPException(status_code=422,
+                                detail=f"couldn't read list: {exc}") from exc
+        finally:
+            await scraper.aclose()
+        for asin in asins:
+            db.upsert_product(_db(), asin)
+            db.upsert_tracking(_db(), user_id, asin, threshold)
+        return {"ok": True, "imported": len(asins), "list_name": list_name,
+                "threshold_pct": threshold}
+
     asin = await resolve_asin(body.target)
     if not asin:
         raise HTTPException(status_code=422, detail="no ASIN found in input")
-    threshold = clamp_threshold(body.threshold_pct)
     db.upsert_product(_db(), asin)
     db.upsert_tracking(_db(), user_id, asin, threshold)
     return {"ok": True, "asin": asin, "threshold_pct": threshold}

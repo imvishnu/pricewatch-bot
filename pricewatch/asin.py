@@ -45,6 +45,15 @@ def extract_asin(text: str) -> str | None:
     return None
 
 
+_WISHLIST_RE = re.compile(r"amazon\.[a-z.]+/(?:hz/wishlist|registry/wishlist)/",
+                          re.IGNORECASE)
+
+
+def is_wishlist_link(text: str) -> bool:
+    """True for Amazon wish list / list share links."""
+    return bool(_WISHLIST_RE.search(text.strip()))
+
+
 def is_short_link(text: str) -> bool:
     """True for amzn.in / amzn.to short links that need redirect resolution."""
     try:

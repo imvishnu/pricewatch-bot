@@ -11,15 +11,17 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from . import db
-from .asin import DEFAULT_THRESHOLD_PCT, clamp_threshold, resolve_asin
+from .asin import (DEFAULT_THRESHOLD_PCT, clamp_threshold, is_wishlist_link,
+                   resolve_asin)
 from .config import Config
+from .sources.scraper import ScraperError, ScraperSource
 
 log = logging.getLogger(__name__)
 
 HELP = (
     "I watch Amazon.in prices and alert you on real drops.\n\n"
-    "/track <amazon url or ASIN> [drop%] — track a product "
-    f"(default {DEFAULT_THRESHOLD_PCT}% below its 90-day median)\n"
+    "/track <amazon url, wish-list link or ASIN> [drop%] — track a product "
+    f"or a whole list (default {DEFAULT_THRESHOLD_PCT}% below 90-day median)\n"
     "/categories electronics, shoes — only alert for these categories "
     "(empty clears the filter)\n"
     "/list — show what you're tracking\n\n"
@@ -55,11 +57,30 @@ async def cmd_track(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 f"Couldn't parse '{context.args[1]}' as a percentage.")
             return
 
+    # Whole wish list: import every product on it.
+    if is_wishlist_link(target):
+        scraper = ScraperSource()
+        try:
+            list_name, asins = await scraper.fetch_wishlist(target)
+        except ScraperError as exc:
+            await update.message.reply_text(f"Couldn't read that list: {exc}")
+            return
+        finally:
+            await scraper.aclose()
+        for asin in asins:
+            db.upsert_product(conn, asin)
+            db.upsert_tracking(conn, user_id, asin, threshold)
+        await update.message.reply_text(
+            f"Imported {len(asins)} products from “{list_name}” — tracking "
+            f"each at ≥{threshold:.0f}% below its 90-day median. See /list.")
+        return
+
     asin = await resolve_asin(target)
     if not asin:
         await update.message.reply_text(
             "Couldn't find an ASIN in that. Send an amazon.in product link, "
-            "an amzn.in short link, or a 10-character ASIN.")
+            "an amzn.in short link, a wish-list share link, or a "
+            "10-character ASIN.")
         return
 
     db.upsert_product(conn, asin)
